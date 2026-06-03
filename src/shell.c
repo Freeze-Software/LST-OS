@@ -821,7 +821,7 @@ static void run_command(const char *cmd) {
 }
 
 void write_prompt() {
-	console_write("TurtleOS> ");
+	console_write("LST-OS> ");
 }
 
 void shell() {

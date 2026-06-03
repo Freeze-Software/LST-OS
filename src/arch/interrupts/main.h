@@ -1,0 +1,2 @@
+void sti();
+void cli();

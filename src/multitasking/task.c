@@ -1,5 +1,3 @@
-//to clashnewbme: sorry for the inconsistent line breaks
-
 #include <stdint.h>
 #include "task.h"
 #include "../memory/main.h"

@@ -237,6 +237,7 @@ void set_console_bg_color(uint32_t color) {
 void console_putc(char c) {
     char s[2] = {c, '\0'};
     print_term(s);
+    serial_putc(c);
 }
 
 void console_write(const char *s) {

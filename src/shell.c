@@ -148,14 +148,19 @@ static int parse_two_args(const char *s, char *a, size_t a_size, char *b, size_t
     return 1;
 }
 
+static char get_input_char(void) {
+    if (kb_available()) return getchar();
+    if (serial_received()) return serial_read();
+    return 0;
+}
+
 static void read_line_prompt(const char *prompt, char *buf, size_t buf_size, int hide_input) {
     size_t len = 0;
     console_write(prompt);
 
     for (;;) {
-	if (kb_available()) {
-            char c = getchar();
-
+        char c = get_input_char();
+        if (c) {
             if (c == '\r' || c == '\n') {
                 console_putc('\n');
                 break;
@@ -173,8 +178,9 @@ static void read_line_prompt(const char *prompt, char *buf, size_t buf_size, int
                 buf[len++] = c;
                 console_putc(hide_input ? '*' : c);
             }
+        } else {
+            __asm__ volatile("hlt");
         }
-	__asm__ volatile("hlt");
     }
 
     buf[len] = '\0';
@@ -849,31 +855,27 @@ void shell() {
 	    write_prompt();
 	    new_prompt = 0;
 	}
-        if (kb_available()) {
-            char c = getchar();
+        char c = get_input_char();
+        if (c) {
             if (c == '\r' || c == '\n') {
                 console_putc('\n');
                 cmd_buf[cmd_len] = '\0';
-		cmd_len = 0;
+                cmd_len = 0;
                 run_command(cmd_buf);
-		new_prompt = 1;
-            }
-
-            if (c == '\b' || c == 127) {
+                new_prompt = 1;
+            } else if (c == '\b' || c == 127) {
                 if (cmd_len > 0) {
                     cmd_len--;
-                    console_backspace();		    
+                    console_backspace();
                 }
-            }
-
-            if (c >= 32 && c <= 126) {
+            } else if (c >= 32 && c <= 126) {
                 if (cmd_len < CMD_BUF_SIZE - 1) {
                     cmd_buf[cmd_len++] = c;
                     console_putc(c);
                 }
             }
-	}
-	render_console();
-	__asm__ volatile("hlt");
+        }
+        render_console();
+        __asm__ volatile("hlt");
     }
 }

@@ -1,4 +1,4 @@
-# Leatherback Sea TurtleOS
+Leatherback Sea TurtleOS is a ported version of the main operating system TurtleOS that will have other features and searve another purpose.
 
 ## Everything
 

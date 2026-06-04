@@ -24,27 +24,53 @@ static const uint16_t cursor_shape[16] = {
 };
 
 void draw_cursor(int x, int y) {
+    int width, height;
+    get_screen_res(&width, &height);
+
     for (int row = 0; row < 16; row++) {
         for (int col = 0; col < 16; col++) {
+            int px = x + col;
+            int py = y + row;
+            if (px < 0 || py < 0 || px >= width || py >= height) {
+                continue;
+            }
+
             if (cursor_shape[row] & (1 << (15 - col))) {
-                draw_pixel(x + col, y + row, 0xFFFFFF);
+                draw_pixel(px, py, 0xFFFFFF);
             }
         }
     }
 }
 
 void save_cursor_bg(int x, int y) {
+    int width, height;
+    get_screen_res(&width, &height);
+
     for (int row = 0; row < 16; row++) {
         for (int col = 0; col < 16; col++) {
-            cursor_bg[row * 16 + col] = screen.buffer[(y + row) * (screen.pitch / 4) + (x + col)];
+            int px = x + col;
+            int py = y + row;
+            if (px < 0 || py < 0 || px >= width || py >= height) {
+                cursor_bg[row * 16 + col] = 0;
+                continue;
+            }
+            cursor_bg[row * 16 + col] = screen.buffer[py * (screen.pitch / 4) + px];
         }
     }
 }
 
 void restore_cursor_bg(int x, int y) {
+    int width, height;
+    get_screen_res(&width, &height);
+
     for (int row = 0; row < 16; row++) {
         for (int col = 0; col < 16; col++) {
-            screen.buffer[(y + row) * (screen.pitch / 4) + (x + col)] = cursor_bg[row * 16 + col];
+            int px = x + col;
+            int py = y + row;
+            if (px < 0 || py < 0 || px >= width || py >= height) {
+                continue;
+            }
+            screen.buffer[py * (screen.pitch / 4) + px] = cursor_bg[row * 16 + col];
         }
     }
 }
@@ -52,10 +78,23 @@ void restore_cursor_bg(int x, int y) {
 void update_cursor(int new_x, int new_y) {
     int width, height;
     get_screen_res(&width, &height);
+
+    if (width <= 0 || height <= 0) {
+        return;
+    }
+
+    if (width < 16) {
+        new_x = 0;
+    }
     if (new_x < 0) new_x = 0;
+    if (new_x > width - 16 && width >= 16)  new_x = width - 16;
+
+    if (height < 16) {
+        new_y = 0;
+    }
     if (new_y < 0) new_y = 0;
-    if (new_x > width - 16)  new_x = width - 16;
     if (new_y > height - 16) new_y = height - 16;
+
     restore_cursor_bg(mouse_x, mouse_y);
     mouse_x = new_x;
     mouse_y = new_y;

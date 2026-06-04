@@ -13,9 +13,10 @@ void kernel_main(uint32_t magic, uint32_t mb_addr) {
     gdt_init();
     idt_init();
     init_heap();
+    console_init(magic, mb_addr);
     ps2mouse_init();
     pit_init(100);
-    console_init(magic, mb_addr);
     add_task(shell, "Shell", 4096);
+    console_writeln("Kernel: scheduler armed");
     sti();
 }

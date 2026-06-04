@@ -11,6 +11,7 @@
 #include "pit/pit.h"
 #include <stdint.h>
 #define CMD_BUF_SIZE 128
+#define HISTORY_SIZE 16
 #define USERNAME_MAX 31
 #define PASSWORD_MAX 63
 #define USER_DB_LBA 2048u
@@ -24,12 +25,17 @@ typedef struct __attribute__((packed)) {
     uint8_t has_user;
     char username[USERNAME_MAX + 1];
     uint32_t password_hash;
-    uint8_t reserved[467];
+    uint8_t reserved[463];
 } user_db_sector_t;
+
+typedef char user_db_sector_must_be_512_bytes[(sizeof(user_db_sector_t) == 512) ? 1 : -1];
 
 static user_db_sector_t g_user_db;
 static int g_logged_in = 0;
 static char g_current_user[USERNAME_MAX + 1];
+static char g_command_history[HISTORY_SIZE][CMD_BUF_SIZE];
+static int g_history_count = 0;
+static int g_history_start = 0;
 
 static int streq(const char *a, const char *b) {
     while (*a && *b) {
@@ -113,6 +119,7 @@ static int parse_two_args(const char *s, char *a, size_t a_size, char *b, size_t
     size_t i = 0;
     size_t j = 0;
 
+
     while (*s == ' ') {
         s++;
     }
@@ -148,8 +155,134 @@ static int parse_two_args(const char *s, char *a, size_t a_size, char *b, size_t
     return 1;
 }
 
+static int parse_one_arg(const char *s, char *a, size_t a_size) {
+    size_t i = 0;
+
+    while (*s == ' ') {
+        s++;
+    }
+
+    while (*s && *s != ' ') {
+        if (i + 1 >= a_size) {
+            return 0;
+        }
+        a[i++] = *s++;
+    }
+    a[i] = '\0';
+
+    while (*s == ' ') {
+        s++;
+    }
+
+    if (i == 0 || *s != '\0') {
+        return 0;
+    }
+
+    return 1;
+}
+
+static void history_push(const char *cmd) {
+    int slot;
+
+    if (cmd[0] == '\0') {
+        return;
+    }
+
+    if (g_history_count > 0) {
+        int last = (g_history_start + g_history_count - 1) % HISTORY_SIZE;
+        if (streq(g_command_history[last], cmd)) {
+            return;
+        }
+    }
+
+    if (g_history_count < HISTORY_SIZE) {
+        slot = (g_history_start + g_history_count) % HISTORY_SIZE;
+        g_history_count++;
+    } else {
+        slot = g_history_start;
+        g_history_start = (g_history_start + 1) % HISTORY_SIZE;
+    }
+
+    str_copy(g_command_history[slot], sizeof(g_command_history[slot]), cmd);
+}
+
+static void print_history(void) {
+    if (g_history_count == 0) {
+        console_writeln("History is empty.");
+        return;
+    }
+
+    for (int i = 0; i < g_history_count; i++) {
+        int slot = (g_history_start + i) % HISTORY_SIZE;
+        console_writef("%d: %s\n", i + 1, g_command_history[slot]);
+    }
+}
+
+static const char *g_commands[] = {
+    "about",
+    "banner",
+    "calc",
+    "cls",
+    "clear",
+    "color",
+    "commands",
+    "cpu",
+    "date",
+    "deluser",
+    "devices",
+    "disk",
+    "echo",
+    "halt",
+    "help",
+    "history",
+    "lines",
+    "lock",
+    "login",
+    "logout",
+    "passwd",
+    "ptop",
+    "reboot",
+    "repeat",
+    "rect",
+    "rect2",
+    "swamp",
+    "sysinfo",
+    "theme",
+    "time",
+    "Turtle talk",
+    "useradd",
+    "user",
+    "version",
+    "whoami",
+};
+
+static void show_banner(void) {
+    set_console_fg_color(0x00FF00);
+    console_writeln("       ");
+    console_writeln("   version 0.2.4");
+    console_writeln("⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⣀⣀⣀⠀⠀⠀⠀");
+    console_writeln("⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡴⠊⠁⠀⠀⠀⠀⠈⠙⢦⡀⠀");
+    console_writeln("⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡜⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢳⠀");
+    console_writeln("⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⡇");
+    console_writeln("⠀⠀⠀⠀⠀⠀⠀⣀⠤⢄⣀⠀⠀⠀⡇⠀⠀⠀⠀⢰⣶⠄⠀⠀⠀⠀⡇");
+    console_writeln("⠀⠀⠀⠀⠀⡴⡋⠀⠀⠀⡨⠓⣄⠀⢳⠀⠀⠀⠀⠀⠉⠀⠀⠀⢀⡼⠀");
+    console_writeln("⠀⠀⠀⢀⡞⠀⢸⠓⠒⢺⡀⠀⠈⢣⠈⡇⠀⠀⠀⠀⠀⢠⡤⠴⠋⠀⠀");
+    console_writeln("⠀⠀⠀⡼⠒⠒⢏⠀⠀⠀⠙⣦⠖⠉⢧⡿⠀⠈⠙⡖⠚⠉⠀⠀⠀⠀⠀");
+    console_writeln("⠀⠀⡖⢧⡀⠀⠈⣦⡤⠤⠊⡏⣀⡴⠊⡹⠀⣠⠞⠀⠀⠀⠀⠀⠀⠀⠀");
+    console_writeln("⢶⡞⡟⠦⣌⡓⠾⠥⠤⠴⠒⠋⣁⠴⢊⣤⠞⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀");
+    console_writeln("⠀⠀⡇⠀⠀⢉⣙⣒⣒⣒⣚⣉⠁⠀⢣⡤⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀");
+    console_writeln("⠀⠀⠙⠒⠒⠚⠒⠋⠉⠉⠀⠈⠓⠚⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀");
+    console_writeln("Dermochelys coriacea");
+    console_writeln("  ");
+    set_console_fg_color(0xFFFFFF);
+}
+
 static char get_input_char(void) {
     if (kb_available()) return getchar();
+    {
+        char polled = keyboard_poll_char();
+        if (polled) return polled;
+    }
     if (serial_received()) return serial_read();
     return 0;
 }
@@ -309,6 +442,21 @@ static int change_password(const char *old_password, const char *new_password) {
     return 1;
 }
 
+static int delete_user(const char *password) {
+    if (!g_logged_in || !g_user_db.has_user) {
+        return 0;
+    }
+
+    if (hash_password(g_current_user, password) != g_user_db.password_hash) {
+        return 0;
+    }
+
+    user_db_reset();
+    g_logged_in = 0;
+    g_current_user[0] = '\0';
+    return user_db_save();
+}
+
 static void auth_boot_flow(void) {
     char username[USERNAME_MAX + 1];
     char password[PASSWORD_MAX + 1];
@@ -356,25 +504,61 @@ void reboot(void) {
 }
 
 static void print_help(void) {
-    console_writeln("  help");
-    console_writeln("  clear");
-    console_writeln("  echo");
-    console_writeln("  date");
-    console_writeln("  calc");
-    console_writeln("  useradd");
-    console_writeln("  login");
-    console_writeln("  whoami");
-    console_writeln("  passwd");
-    console_writeln("  sysinfo");
-    console_writeln("  reboot");
-    console_writeln("  halt");
-    console_writeln("  Turtle talk");
-    console_writeln("  color");
+    for (size_t i = 0; i < sizeof(g_commands) / sizeof(g_commands[0]); i++) {
+        console_writef("  %s\n", g_commands[i]);
+    }
+}
+
+static void print_help_filtered(const char *filter) {
+    int matches = 0;
+
+    if (filter[0] == '\0') {
+        print_help();
+        return;
+    }
+
+    for (size_t i = 0; i < sizeof(g_commands) / sizeof(g_commands[0]); i++) {
+        if (contains_text(g_commands[i], filter)) {
+            console_writef("  %s\n", g_commands[i]);
+            matches++;
+        }
+    }
+
+    if (matches == 0) {
+        console_writeln("No commands matched that filter.");
+    }
 }
 
 static void print_uint2(unsigned int n) {
     console_putc((char)('0' + (n / 10) % 10));
     console_putc((char)('0' + n % 10));
+}
+
+static int parse_uint_arg(const char *s, unsigned int *value, const char **rest) {
+    unsigned int result = 0;
+    int saw_digit = 0;
+
+    while (*s == ' ') {
+        s++;
+    }
+
+    while (*s >= '0' && *s <= '9') {
+        saw_digit = 1;
+        result = (result * 10u) + (unsigned int)(*s - '0');
+        s++;
+    }
+
+    if (!saw_digit) {
+        return 0;
+    }
+
+    while (*s == ' ') {
+        s++;
+    }
+
+    *value = result;
+    *rest = s;
+    return 1;
 }
 
 static void print_uint(unsigned int n) {
@@ -416,6 +600,16 @@ static void cmd_date(void) {
     print_uint2(hour); console_putc(':');
     print_uint2(min);  console_putc(':');
     print_uint2(sec);  console_putc('\n');
+}
+
+static void cmd_time(void) {
+    while (cmos_read(0x0A) & 0x80) {}
+    print_uint2(bcd2bin(cmos_read(0x04)));
+    console_putc(':');
+    print_uint2(bcd2bin(cmos_read(0x02)));
+    console_putc(':');
+    print_uint2(bcd2bin(cmos_read(0x00)));
+    console_putc('\n');
 }
 
 static const char *calc_pos;
@@ -623,6 +817,150 @@ void cmd_ptop() {
 	}	
 }
 
+static void cmd_about(void) {
+    console_writeln("Leatherback Sea TurtleOS 0.2.4");
+    console_writeln("Target: i386, multiboot framebuffer + serial console");
+    console_writef("Tasks: %d\n", get_task_count());
+    if (g_logged_in) {
+        console_write("User: ");
+        console_writeln(g_current_user);
+    } else {
+        console_writeln("User: guest");
+    }
+    console_writeln("Commands: help, help <text>, history, about, banner");
+}
+
+static void cmd_version(void) {
+    console_writeln("Leatherback Sea TurtleOS version 0.2.4");
+}
+
+static void cmd_user(void) {
+    if (g_logged_in) {
+        console_write("Logged in as ");
+        console_writeln(g_current_user);
+        return;
+    }
+
+    if (g_user_db.has_user) {
+        console_writeln("No active session.");
+        return;
+    }
+
+    console_writeln("No user account configured.");
+}
+
+static void cmd_disk(void) {
+    uint32_t sectors = ata_get_sector_count();
+    uint32_t mib = sectors / 2048u;
+
+    if (sectors == 0) {
+        console_writeln("Disk information unavailable.");
+        return;
+    }
+
+    console_writef("ATA sectors: %d\n", (int)sectors);
+    console_writef("Approx size: %d MiB\n", (int)mib);
+    console_writef("User DB sector: %d\n", (int)USER_DB_LBA);
+}
+
+static void cmd_devices(void) {
+    size_t storage = 0;
+    size_t net = 0;
+    size_t display = 0;
+    size_t bridge = 0;
+
+    for (size_t i = 0; i < g_pci_bus.count; i++) {
+        uint8_t cls = g_pci_bus.devices[i].class_code;
+        if (cls == 0x01) storage++;
+        else if (cls == 0x02) net++;
+        else if (cls == 0x03) display++;
+        else if (cls == 0x06) bridge++;
+    }
+
+    console_writef("PCI devices: %d\n", (int)g_pci_bus.count);
+    console_writef("storage: %d\n", (int)storage);
+    console_writef("net: %d\n", (int)net);
+    console_writef("display: %d\n", (int)display);
+    console_writef("bridge: %d\n", (int)bridge);
+}
+
+static void cmd_lock(void) {
+    char password[PASSWORD_MAX + 1];
+
+    if (!g_logged_in || !g_user_db.has_user) {
+        console_writeln("No active user session.");
+        return;
+    }
+
+    g_logged_in = 0;
+    g_current_user[0] = '\0';
+    console_writeln("Session locked.");
+    for (;;) {
+        read_line_prompt("Password: ", password, sizeof(password), 1);
+        if (try_login(g_user_db.username, password)) {
+            console_writeln("Unlocked.");
+            return;
+        }
+        console_writeln("Wrong password.");
+    }
+}
+
+static void cmd_theme(const char *name) {
+    if (streq(name, "matrix")) {
+        set_console_bg_color(0x000000);
+        set_console_fg_color(0x00FF00);
+        console_writeln("Theme set to matrix.");
+        return;
+    }
+
+    if (streq(name, "ocean")) {
+        set_console_bg_color(0x001B2E);
+        set_console_fg_color(0x7FDBFF);
+        console_writeln("Theme set to ocean.");
+        return;
+    }
+
+    if (streq(name, "sand")) {
+        set_console_bg_color(0x2B1D0E);
+        set_console_fg_color(0xF4D28C);
+        console_writeln("Theme set to sand.");
+        return;
+    }
+
+    if (streq(name, "classic")) {
+        set_console_bg_color(0x000000);
+        set_console_fg_color(0xFFFFFF);
+        console_writeln("Theme set to classic.");
+        return;
+    }
+
+    console_writeln("Usage: theme classic|matrix|ocean|sand");
+}
+
+static void cmd_repeat(const char *args) {
+    unsigned int count = 0;
+    const char *text = 0;
+
+    if (!parse_uint_arg(args, &count, &text) || text[0] == '\0') {
+        console_writeln("Usage: repeat <count> <text>");
+        return;
+    }
+
+    if (count == 0) {
+        console_writeln("Count must be at least 1.");
+        return;
+    }
+
+    if (count > 32) {
+        console_writeln("Count too large. Max is 32.");
+        return;
+    }
+
+    for (unsigned int i = 0; i < count; i++) {
+        console_writeln(text);
+    }
+}
+
 static void run_command(const char *cmd) {
     char a[USERNAME_MAX + 1];
     char b[PASSWORD_MAX + 1];
@@ -633,6 +971,63 @@ static void run_command(const char *cmd) {
 
     if (streq(cmd, "help")) {
         print_help();
+        return;
+    }
+
+    if (starts_with(cmd, "help ")) {
+        print_help_filtered(cmd + 5);
+        return;
+    }
+
+    if (streq(cmd, "commands")) {
+        print_help();
+        return;
+    }
+
+    if (streq(cmd, "history")) {
+        print_history();
+        return;
+    }
+
+    if (streq(cmd, "history clear")) {
+        g_history_count = 0;
+        g_history_start = 0;
+        console_writeln("History cleared.");
+        return;
+    }
+
+    if (streq(cmd, "about")) {
+        cmd_about();
+        return;
+    }
+
+    if (streq(cmd, "version") || streq(cmd, "ver")) {
+        cmd_version();
+        return;
+    }
+
+    if (streq(cmd, "user")) {
+        cmd_user();
+        return;
+    }
+
+    if (streq(cmd, "disk")) {
+        cmd_disk();
+        return;
+    }
+
+    if (streq(cmd, "devices")) {
+        cmd_devices();
+        return;
+    }
+
+    if (streq(cmd, "lock")) {
+        cmd_lock();
+        return;
+    }
+
+    if (streq(cmd, "banner")) {
+        show_banner();
         return;
     }
 
@@ -666,6 +1061,11 @@ static void run_command(const char *cmd) {
 
     if (streq(cmd, "date")) {
         cmd_date();
+        return;
+    }
+
+    if (streq(cmd, "time")) {
+        cmd_time();
         return;
     }
 
@@ -704,6 +1104,11 @@ static void run_command(const char *cmd) {
         return;
     }
 
+    if (streq(cmd, "cls")) {
+        console_clear();
+        return;
+    }
+
     if (starts_with(cmd, "color ")) {
         char* color_str = cmd + 9;
 	uint32_t color_hex = string_to_hex(color_str);
@@ -715,8 +1120,18 @@ static void run_command(const char *cmd) {
 	return;
     }
 
+    if (starts_with(cmd, "theme ")) {
+        cmd_theme(cmd + 6);
+        return;
+    }
+
     if (starts_with(cmd, "echo ")) {
         console_writeln(cmd + 5);
+        return;
+    }
+
+    if (starts_with(cmd, "repeat ")) {
+        cmd_repeat(cmd + 7);
         return;
     }
 
@@ -733,6 +1148,20 @@ static void run_command(const char *cmd) {
             console_writeln("User created");
         } else {
             console_writeln("Failed to create user.");
+        }
+        return;
+    }
+
+    if (starts_with(cmd, "deluser ")) {
+        if (!parse_one_arg(cmd + 8, a, sizeof(a))) {
+            console_writeln("Usage: deluser <password>");
+            return;
+        }
+
+        if (delete_user(a)) {
+            console_writeln("User deleted.");
+        } else {
+            console_writeln("Failed to delete user.");
         }
         return;
     }
@@ -827,24 +1256,7 @@ void write_prompt() {
 void shell() {
     char cmd_buf[CMD_BUF_SIZE];
     size_t cmd_len = 0;
-    set_console_fg_color(0x00FF00);
-    console_writeln("       ");
-    console_writeln("   version 0.2.4");
-    console_writeln("⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⣀⣀⣀⠀⠀⠀⠀");
-    console_writeln("⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡴⠊⠁⠀⠀⠀⠀⠈⠙⢦⡀⠀");
-    console_writeln("⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡜⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢳⠀");
-    console_writeln("⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⡇");
-    console_writeln("⠀⠀⠀⠀⠀⠀⠀⣀⠤⢄⣀⠀⠀⠀⡇⠀⠀⠀⠀⢰⣶⠄⠀⠀⠀⠀⡇");
-    console_writeln("⠀⠀⠀⠀⠀⡴⡋⠀⠀⠀⡨⠓⣄⠀⢳⠀⠀⠀⠀⠀⠉⠀⠀⠀⢀⡼⠀");
-    console_writeln("⠀⠀⠀⢀⡞⠀⢸⠓⠒⢺⡀⠀⠈⢣⠈⡇⠀⠀⠀⠀⠀⢠⡤⠴⠋⠀⠀");
-    console_writeln("⠀⠀⠀⡼⠒⠒⢏⠀⠀⠀⠙⣦⠖⠉⢧⡿⠀⠈⠙⡖⠚⠉⠀⠀⠀⠀⠀");
-    console_writeln("⠀⠀⡖⢧⡀⠀⠈⣦⡤⠤⠊⡏⣀⡴⠊⡹⠀⣠⠞⠀⠀⠀⠀⠀⠀⠀⠀");
-    console_writeln("⢶⡞⡟⠦⣌⡓⠾⠥⠤⠴⠒⠋⣁⠴⢊⣤⠞⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀");
-    console_writeln("⠀⠀⡇⠀⠀⢉⣙⣒⣒⣒⣚⣉⠁⠀⢣⡤⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀");
-    console_writeln("⠀⠀⠙⠒⠒⠚⠒⠋⠉⠉⠀⠈⠓⠚⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀");
-    console_writeln("Dermochelys coriacea");
-    console_writeln("  ");
-    set_console_fg_color(0xFFFFFF);
+    show_banner();
     pci_enumerate(&g_pci_bus);
     auth_boot_flow();
     //console_writeln("  ");
@@ -860,6 +1272,7 @@ void shell() {
             if (c == '\r' || c == '\n') {
                 console_putc('\n');
                 cmd_buf[cmd_len] = '\0';
+                history_push(cmd_buf);
                 cmd_len = 0;
                 run_command(cmd_buf);
                 new_prompt = 1;

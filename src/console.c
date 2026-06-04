@@ -136,6 +136,11 @@ void console_backspace(void) {
 
     dirty_rows[cursor_y] = 1;
 
+    // Mirror erase on serial terminals (e.g., QEMU nographic).
+    serial_putc('\b');
+    serial_putc(' ');
+    serial_putc('\b');
+
     render_console();
 }
 

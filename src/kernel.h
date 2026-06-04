@@ -40,6 +40,7 @@ static pci_bus_t g_pci_bus;
 void keyboard_init(void);
 int keyboard_has_char(void);
 char keyboard_get_char(void);
+char keyboard_poll_char(void);
 
 void io_wait(void);
 uint8_t inb(uint16_t port);

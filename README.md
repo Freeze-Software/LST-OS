@@ -19,3 +19,9 @@ make clean
 make all
 make run
 ```
+
+make just the iso:
+```bash
+make iso
+```
+

@@ -16,9 +16,9 @@ header_start:
     dw 5                         ; type = framebuffer
     dw 0                         ; flags
     dd 20                        ; size
-    dd 1920                      ; width
-    dd 1080                      ; height
-    dd 32                        ; bpp
+    dd 0                         ; width (don't care)
+    dd 0                         ; height (don't care)
+    dd 32                        ; prefer 32bpp
     ; End Tag
     align 8
     dw 0

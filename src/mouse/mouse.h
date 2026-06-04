@@ -15,8 +15,10 @@ typedef struct {
 } ps2mouse_state_t;
 
 extern ps2mouse_state_t mouse;
+extern int mouse_available;
 
 void ps2mouse_init(void);
 void mouse_irq_handler();
+void mouse_poll(void);
 
 #endif

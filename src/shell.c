@@ -33,6 +33,7 @@ typedef char user_db_sector_must_be_512_bytes[(sizeof(user_db_sector_t) == 512) 
 static user_db_sector_t g_user_db;
 static int g_logged_in = 0;
 static char g_current_user[USERNAME_MAX + 1];
+static char g_hostname[32] = "turtleos";
 static char g_command_history[HISTORY_SIZE][CMD_BUF_SIZE];
 static int g_history_count = 0;
 static int g_history_start = 0;
@@ -235,24 +236,35 @@ static const char *g_commands[] = {
     "halt",
     "help",
     "history",
+    "hostname",
+    "id",
     "lines",
     "lock",
     "login",
     "logout",
+    "kill",
     "passwd",
+    "ps",
     "ptop",
     "reboot",
     "repeat",
     "rect",
     "rect2",
+    "resume",
+    "sethostname",
+    "sleep",
+    "shutdown",
     "swamp",
     "sysinfo",
     "theme",
     "time",
     "Turtle talk",
+    "uname",
+    "uptime",
     "useradd",
     "user",
     "version",
+    "who",
     "whoami",
 };
 
@@ -834,6 +846,119 @@ static void cmd_version(void) {
     console_writeln("Leatherback Sea TurtleOS version 0.2.4");
 }
 
+static void cmd_hostname(void) {
+    console_writeln(g_hostname);
+}
+
+static int hostname_is_valid(const char *name) {
+    size_t len = str_len(name);
+    if (len == 0 || len >= sizeof(g_hostname)) {
+        return 0;
+    }
+
+    for (size_t i = 0; i < len; i++) {
+        char c = name[i];
+        int is_alpha = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+        int is_digit = (c >= '0' && c <= '9');
+        if (!(is_alpha || is_digit || c == '-' || c == '_')) {
+            return 0;
+        }
+    }
+
+    return 1;
+}
+
+static void cmd_sethostname(const char *name) {
+    if (!hostname_is_valid(name)) {
+        console_writeln("Usage: sethostname <letters|digits|-|_>");
+        return;
+    }
+
+    str_copy(g_hostname, sizeof(g_hostname), name);
+    console_write("Hostname set to ");
+    console_writeln(g_hostname);
+}
+
+static void cmd_who(void) {
+    if (g_logged_in) {
+        console_write("1 ");
+        console_writeln(g_current_user);
+    } else {
+        console_writeln("0 guest");
+    }
+}
+
+static void cmd_id(void) {
+    if (g_logged_in) {
+        console_write("uid=1000 gid=1000 user=");
+        console_writeln(g_current_user);
+        return;
+    }
+
+    console_writeln("uid=0 gid=0 user=guest");
+}
+
+static void cmd_uname(void) {
+    console_writeln("Leatherback-Sea-TurtleOS i386");
+}
+
+static void cmd_uptime(void) {
+    uint32_t hz = pit_get_hz();
+    uint32_t ticks = pit_get_ticks();
+    uint32_t total_seconds;
+    uint32_t hours;
+    uint32_t minutes;
+    uint32_t seconds;
+
+    if (hz == 0) {
+        hz = 1;
+    }
+
+    total_seconds = ticks / hz;
+    hours = total_seconds / 3600u;
+    minutes = (total_seconds % 3600u) / 60u;
+    seconds = total_seconds % 60u;
+
+    console_write("Uptime: ");
+    print_uint(hours);
+    console_write("h ");
+    print_uint(minutes);
+    console_write("m ");
+    print_uint(seconds);
+    console_putc('\n');
+}
+
+static void cmd_sleep(const char *arg) {
+    unsigned int seconds;
+    uint32_t hz = pit_get_hz();
+    uint32_t start;
+    uint32_t wait_ticks;
+
+    if (!parse_uint(arg, &seconds)) {
+        console_writeln("Usage: sleep <seconds>");
+        return;
+    }
+
+    if (seconds == 0) {
+        return;
+    }
+
+    if (hz == 0) {
+        hz = 1;
+    }
+
+    if (seconds > (0xFFFFFFFFu / hz)) {
+        seconds = 0xFFFFFFFFu / hz;
+    }
+
+    wait_ticks = seconds * hz;
+    start = pit_get_ticks();
+
+    while ((uint32_t)(pit_get_ticks() - start) < wait_ticks) {
+        __asm__ volatile("hlt");
+    }
+}
+
 static void cmd_user(void) {
     if (g_logged_in) {
         console_write("Logged in as ");
@@ -961,6 +1086,14 @@ static void cmd_repeat(const char *args) {
     }
 }
 
+static void cmd_shutdown(void) {
+    console_writeln("Shutting down...");
+    __asm__ volatile("cli");
+    for (;;) {
+        __asm__ volatile("hlt");
+    }
+}
+
 static void run_command(const char *cmd) {
     char a[USERNAME_MAX + 1];
     char b[PASSWORD_MAX + 1];
@@ -1006,6 +1139,36 @@ static void run_command(const char *cmd) {
         return;
     }
 
+    if (streq(cmd, "hostname")) {
+        cmd_hostname();
+        return;
+    }
+
+    if (starts_with(cmd, "sethostname ")) {
+        cmd_sethostname(cmd + 12);
+        return;
+    }
+
+    if (streq(cmd, "who")) {
+        cmd_who();
+        return;
+    }
+
+    if (streq(cmd, "id")) {
+        cmd_id();
+        return;
+    }
+
+    if (streq(cmd, "uname")) {
+        cmd_uname();
+        return;
+    }
+
+    if (streq(cmd, "uptime")) {
+        cmd_uptime();
+        return;
+    }
+
     if (streq(cmd, "user")) {
         cmd_user();
         return;
@@ -1034,6 +1197,11 @@ static void run_command(const char *cmd) {
     if (streq(cmd, "ptop")) {
 	    cmd_ptop();
 	    return;
+    }
+
+    if (streq(cmd, "ps")) {
+        cmd_ptop();
+        return;
     }
 
     if (streq(cmd, "cpu")) {
@@ -1135,6 +1303,43 @@ static void run_command(const char *cmd) {
         return;
     }
 
+    if (starts_with(cmd, "sleep ")) {
+        cmd_sleep(cmd + 6);
+        return;
+    }
+
+    if (starts_with(cmd, "kill ")) {
+        unsigned int pid;
+        if (!parse_uint(cmd + 5, &pid)) {
+            console_writeln("Usage: kill <pid>");
+            return;
+        }
+        if (pid == 0) {
+            console_writeln("Cannot disable PID 0.");
+            return;
+        }
+        if (disable_task((int)pid) == 0) {
+            console_writeln("Task disabled.");
+        } else {
+            console_writeln("Invalid PID.");
+        }
+        return;
+    }
+
+    if (starts_with(cmd, "resume ")) {
+        unsigned int pid;
+        if (!parse_uint(cmd + 7, &pid)) {
+            console_writeln("Usage: resume <pid>");
+            return;
+        }
+        if (enable_task((int)pid) == 0) {
+            console_writeln("Task enabled.");
+        } else {
+            console_writeln("Invalid PID.");
+        }
+        return;
+    }
+
     if (starts_with(cmd, "useradd ")) {
         if (!parse_two_args(cmd + 8, a, sizeof(a), b, sizeof(b))) {
             console_writeln("Usage: useradd");
@@ -1220,6 +1425,11 @@ static void run_command(const char *cmd) {
         return;
     }
 
+    if (streq(cmd, "shutdown")) {
+        cmd_shutdown();
+        return;
+    }
+
     if (streq(cmd, "sysinfo")) {
 	    set_console_fg_color(0x00FF00);
         console_writeln("⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⣀⣀⣀⠀⠀⠀⠀");
@@ -1239,11 +1449,7 @@ static void run_command(const char *cmd) {
     }
 
     if (streq(cmd, "halt")) {
-        console_writeln("Halting...");
-        __asm__ volatile("cli");
-        for (;;) {
-            __asm__ volatile("hlt");
-        }
+        cmd_shutdown();
     }
 
     console_writeln("command not found");

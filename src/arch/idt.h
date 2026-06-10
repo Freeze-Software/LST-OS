@@ -1,1 +1,0 @@
-void idt_init();

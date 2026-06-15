@@ -1,1 +1,3 @@
 Due to a request by the parents of Luis-Harz, we must take down all source code of TurtleOS as certain laws dont apply to his age and his nation. Please understand that we dont want to do this, but we must.
+
+https://discord.gg/fr5fUpa65e

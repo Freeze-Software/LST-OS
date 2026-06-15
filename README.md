@@ -1,5 +1,8 @@
 Leatherback Sea TurtleOS is a ported version of the main operating system TurtleOS that will have other features and searve another purpose.
 
+Discord:
+https://discord.gg/fr5fUpa65e
+
 ## Everything
 
 - `src/boot.s`

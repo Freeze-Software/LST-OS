@@ -1,3 +1,27 @@
-Due to a request by the parents of Luis-Harz, we must take down all source code of TurtleOS as certain laws dont apply to his age and his nation. Please understand that we dont want to do this, but we must.
+Leatherback Sea TurtleOS is a ported version of the main operating system TurtleOS that will have other features and searve another purpose.
 
-https://discord.gg/fr5fUpa65e
+## Everything
+
+- `src/boot.s`
+- `src/linker.ld`
+- `src/kernel.c`
+- `src/console.c`
+- `src/vga.c`
+- `src/serial.c`
+- `src/keyboard.c`
+- `grub/grub.cfg`
+- `Makefile`
+
+## How to run
+run:
+```bash
+make clean
+make all
+make run
+```
+
+make just the iso:
+```bash
+make iso
+```
+
